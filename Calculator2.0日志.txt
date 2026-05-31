@@ -1,0 +1,217 @@
+Calculator2.0日志
+大纲：对小数运算，负数运算，科学函数，变量存储的支持
+Q1.支持小数运算
+1.ShuntingYard.cpp 中识别数字（含小数点）
+bool isNumberChar(char c) {
+    return (c >= '0' && c <= '9') || c == '.';
+}
+2.Evaluate.cpp 中转换 std::stod 代替 std::stoi
+3.除法运算改为浮点除法
+case '/': 
+    if (b == 0.0) throw 		std::runtime_error("Division by zero");
+    	valStack.push(a / b); 
+    	break;
+4.返回类型改为 double
+修改 evaluatePostfix 返回 double，main 中输出使用 std::cout << result（默认精度即可），Evaluate.h和Evaluate.cpp中int改double。
+
+Q2.支持一元负号
+1.修改ShuntingYard.cpp
+if (op == '~')
+	return 3;	//一元负号优先级最高
+2. 修改运算符处理部分（c == '-' 分支）
+else if (c == '+' || c == '*' || c == '/') {
+    // 二元运算符处理（同原来）
+    while (!opStack.empty() && precedence(opStack.top()) >= precedence(c)) {
+        output.push_back(std::string(1, opStack.top()));
+        opStack.pop();
+    }
+    opStack.push(c);
+}
+else if (c == '-') {
+    // 判断一元负号
+    bool isUnary = (i == 0) || (expr[i-1] == '(');
+    if (isUnary) {
+        // 一元负号：压入特殊标记 '~'
+        while (!opStack.empty() && precedence(opStack.top()) >= 3) {
+            output.push_back(std::string(1, opStack.top()));
+            opStack.pop();
+        }
+        opStack.push('~');
+    } else {
+        // 二元减号
+        while (!opStack.empty() && precedence(opStack.top()) >= precedence(c)) {
+            output.push_back(std::string(1, opStack.top()));
+            opStack.pop();
+        }
+        opStack.push(c);
+    }
+}
+3.修改 Evaluate.cpp
+在 evaluatePostfix 中增加对 "~" 的处理：
+else if (token == "~") {   // 一元负号
+    if (valStack.size() < 1)
+        throw std::runtime_error("Not enough operand for unary minus");
+    double a = valStack.top(); valStack.pop();
+    valStack.push(-a);
+}
+
+Q3.支持科学函数
+1.修改 ShuntingYard.cpp
+// 判断是否为函数名
+bool isFunction(const std::string& token) {
+    static const std::unordered_set<std::string> functions = {"sin", "cos", "sqrt", "pow"};
+    return functions.find(token) != functions.end();
+}
+// 修改 precedence 函数，增加函数优先级（可用特殊值）
+int precedence(const std::string& op) {
+    if (op == "sin" || op == "cos" || op == "sqrt") return 4;  // 单目函数
+    if (op == "pow") return 3;  // 双目函数，优先级低于单目但高于乘除
+    if (op == "~") return 4;
+    if (op == "+" || op == "-") return 1;
+    if (op == "*" || op == "/") return 2;
+    return 0;
+}
+//precedence 参数改为 std::string
+2. 修改主调函数，提高浮点数输出精度
+#include <iomanip>        // 添加
+
+try {
+        auto postfix = infixToPostfix(expr);
+        double result = evaluatePostfix(postfix);
+        
+        // 设置输出精度，例如保留 10 位小数，并去掉末尾多余的零
+        std::cout << std::fixed << std::setprecision(10);
+        std::cout << result << std::endl;
+    }
+3. 处理函数调用时的括号
+修改 c == ')' 分支：当遇到 ')' 时，原本只弹出运算符直到 '('。现在需要额外检查栈顶是否是函数名，如果是则也弹出并输出。
+else if (c == ')') {
+    while (!opStack.empty() && opStack.top() != "(") {
+        output.push_back(opStack.top());
+        opStack.pop();
+    }
+    if (!opStack.empty() && opStack.top() == "(") {
+        opStack.pop(); // 弹出 '('
+    }
+    // 弹出后，检查栈顶是否为函数名
+    if (!opStack.empty() && isFunction(opStack.top())) {
+        output.push_back(opStack.top());
+        opStack.pop();
+    }
+}
+将 MyStack<char> 改为 MyStack<std::string>
+原先 opStack.push(c) 改为 opStack.push(std::string(1, c))
+原先 opStack.top() 返回 char，现在返回 std::string
+将所有单个字符的运算符也转为字符串
+4.修改 Evaluate.cpp（支持函数求值）
+在 evaluatePostfix 中增加对 "sin", "cos", "sqrt", "pow" 的处理：
+补充头文件：#include <cmath>
+在evaluatePostfix函数中补充识别科学函数
+else if (token == "sin") {
+            if (valStack.size() < 1) throw std::runtime_error("sin needs one operand");
+            double a = valStack.top(); valStack.pop();
+            valStack.push(sin(a));
+        }
+        else if (token == "cos") {
+            if (valStack.size() < 1) throw std::runtime_error("cos needs one operand");
+            double a = valStack.top(); valStack.pop();
+            valStack.push(cos(a));
+        }
+        else if (token == "sqrt") {
+            if (valStack.size() < 1) throw std::runtime_error("sqrt needs one operand");
+            double a = valStack.top(); valStack.pop();
+            if (a < 0) throw std::runtime_error("sqrt of negative number");
+            valStack.push(sqrt(a));
+        }
+        else if (token == "pow") {
+            if (valStack.size() < 2) throw std::runtime_error("pow needs two operands");
+            double b = valStack.top(); valStack.pop();
+            double a = valStack.top(); valStack.pop();
+            valStack.push(pow(a, b));
+        }
+
+------------------------------------------------------
+报错：
+Q1.	链接错误
+A1.	函数签名不匹配
+修改 ShuntingYard.h：将 precedence 的声明改为：int precedence(const std::string& op);
+修改所有调用 precedence 的地方：在 infixToPostfix 中，原来 precedence(c) 改为 precedence(std::string(1, c))。
+
+Q2.	Error: Not enough operands
+A2.	没有正确识别函数名，每个字母 's'、'i'、'n' 被当作单独的字符处理，而不是作为一个完整的 "sin" 标识符。这导致后缀表达式变成了 s i 0 n，而不是 0 sin。
+在 infixToPostfix 的循环中没有处理 isalpha(c) 的情况，所以字母被当作普通字符，既不是数字也不是运算符，最终被忽略（或错误地送入栈）。正确做法：遇到字母时，应连续读取整个标识符（函数名）。
+修正 ShuntingYard.cpp
+添加头文件：#include <cctype>   // isalpha, isalnum
+在循环中增加对字母的处理（放在数字判断之后、其他字符之前）
+else if (isalpha(c)) {   // 处理函数名
+    if (!number.empty()) {
+        output.push_back(number);
+        number.clear();
+    }
+    std::string func;
+    while (i < expr.length() && isalnum(expr[i])) {
+        func += expr[i++];
+    }
+    i--; // 回退因为循环会自增
+    if (isFunction(func)) {
+        opStack.push(func);   // 函数名压栈
+    } else {
+        throw std::runtime_error("Unknown function: " + func);
+    }
+}
+
+Q3.	输入sin(Π/3)程序报错运行中止
+A3.	到了非 ASCII 字符 Π（其 ASCII 为 -90），导致 isalpha(c) 判断出错，并且无法处理该字符。
+修改 ShuntingYard.cpp 中的字符判断：将 isalpha(c) 改为显式检查 ASCII 字母范围，避免负值字符被误判：
+bool isAsciiAlpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+然后在循环中将 else if (isalpha(c)) 替换为 else if (isAsciiAlpha(c))。
+支持数学常量 pi 和 e：识别标识符后，检查是否为常量，如果是则直接当作数字处理（推入输出队列）。
+添加常量判断函数：
+bool isConstant(const std::string& token) {
+    return token == "pi" || token == "e";
+}
+
+double getConstantValue(const std::string& token) {
+    if (token == "pi") return 3.141592653589793;
+    if (token == "e") return 2.718281828459045;
+    return 0.0;
+}
+修改标识符处理逻辑：
+else if (isAsciiAlpha(c)) {
+    if (!number.empty()) {
+        output.push_back(number);
+        number.clear();
+    }
+    std::string ident;
+    while (i < expr.length() && (isAsciiAlpha(expr[i]) || isdigit(expr[i]))) {
+        ident += expr[i++];
+    }
+    i--;
+    if (isFunction(ident)) {
+        opStack.push(ident);
+    } else if (isConstant(ident)) {
+        // 常量直接作为数值输出
+        output.push_back(std::to_string(getConstantValue(ident)));
+    } else {
+        throw std::runtime_error("Unknown identifier: " + ident);
+    }
+}
+处理输入中的非法字符：
+在循环的 else 分支中，可以忽略非 ASCII 字符（比如输入的 Π），或抛出异常。增加一个分支来跳过非 ASCII 非运算符的字符：
+else {
+    // 如果不是数字、字母、运算符、括号，则忽略（如空格、非ASCII字符）
+    if (!isspace(static_cast<unsigned char>(c))) {
+        // throw std::runtime_error("Invalid character");	// 抛出异常或忽略
+        continue; // 忽略并继续
+    }
+    // 原有处理数字、括号、运算符的代码...
+}
+------------------------------------------------------
+
+Q4.	支持变量存储
+A4.	修改 ShuntingYard.cpp：支持变量名输出
+在 infixToPostfix 函数中，当标识符不是函数也不是常量时，直接作为变量名输出。
+	修改 Evaluate.h：增加带符号表的声明
+	修改 main.cpp：支持交互式赋值与计算

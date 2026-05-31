@@ -1,0 +1,6 @@
+calculator/
+├── main.cpp           # 入口，交互循环
+├── ShuntingYard.h/cpp # 中缀转后缀
+├── Evaluate.h/cpp     # 后缀求值
+├── Stack.h            # 手写栈
+└── Token.h            # 定义运算符、操作数类型（可选）
